@@ -44,6 +44,7 @@ class VitalsSettings:
     range_min_m: float = 0.3
     range_max_m: float = 1.5
     angle_max_deg: float = 60.0
+    angle_min_deg: float | None = None   # None: symmetric window (-angle_max .. angle_max)
     num_angle_bins: int = 32
     history_s: float = 30.0          # signal kept for display / breathing
     breath_window_s: float = 25.0
@@ -198,7 +199,7 @@ class VitalSignsProcessor:
                     w = k / gap
                     self._frames.append(((1 - w) * prev + w * az).astype(np.complex64))
                     self._fnums.append(self._last_fnum + k)
-        self._frames.append(az.astype(np.complex64))
+        self._frames.append(np.asarray(az, dtype=np.complex64))  # no copy: may be shared
         self._fnums.append(fn)
         self._last_fnum = fn
 
@@ -228,7 +229,9 @@ class VitalSignsProcessor:
         recent = cube[-int(max(3, 5 * self.fs)):, r0:r1 + 1]
         bf = self._beamform(recent)                         # [t, r, angle]
         var = np.var(bf, axis=0).real                       # temporal variance
-        ang_ok = np.abs(self._angles()) <= s.angle_max_deg
+        amin = -s.angle_max_deg if s.angle_min_deg is None else s.angle_min_deg
+        ang = self._angles()
+        ang_ok = (ang >= amin) & (ang <= s.angle_max_deg)
         var[:, ~ang_ok] = 0
         flat = np.sort(var[:, ang_ok].ravel())
         background = np.median(flat[: max(1, int(len(flat) * 0.8))]) + 1e-12
@@ -278,7 +281,10 @@ class VitalSignsProcessor:
         self._heart_hist.append(bpm)
         return float(np.median(list(self._heart_hist)[-5:]))
 
-    def update(self) -> VitalsResult:
+    def update(self, cube: np.ndarray | None = None) -> VitalsResult:
+        """Analyse the buffered frames.  ``cube`` may pass an already stacked
+        copy of the buffer (shared by several processors watching different
+        zones of the same frames)."""
         s = self.settings
         res = VitalsResult()
         if self.missing_heatmap and not self._frames:
@@ -292,7 +298,8 @@ class VitalSignsProcessor:
             res.warmup_left_s = s.min_breath_s
             return res
 
-        cube = np.stack(self._frames)                       # [t, range, antenna]
+        if cube is None or len(cube) != n:
+            cube = np.stack(self._frames)                   # [t, range, antenna]
         res.time_s = self._fnums[-1] / fs
         lock, ratio, var = self._locate(cube)
         res.range_angle = var

@@ -4,8 +4,10 @@ This guide covers both apps:
 
 - **Vital Signs Monitor:** heart and breathing rate. Start it with `start_vitals_windows.bat`.
 - **Radar Studio:** general radar control and data. Start it with `start_windows.bat`.
+- **Car Radar Suite:** Drive Assist, Park Assist and Cabin Guard. Start it with
+  `start_car_windows.bat`. See [awr1843_auto/README.md](awr1843_auto/README.md).
 
-Linux and macOS users run `./start_vitals.sh` and `./start.sh` instead.
+Linux and macOS users run `./start_vitals.sh`, `./start.sh` and `./start_car.sh` instead.
 
 ---
 
@@ -123,3 +125,18 @@ Any error is printed in that window. Copy it and send it to me.
 The first command uses the simulator. The other two use the board: replace COM3 / COM4 with
 your port numbers. The terminal prints the breathing rate, heart rate, distance and status
 every second.
+
+## 9. Car Radar Suite in short
+
+1. Double-click **`start_car_windows.bat`** and pick a mode at the top (Drive / Park /
+   Cabin).
+2. Try **Simulator (virtual car)** → Connect → Start first. Every mode has a scripted scene:
+   in Drive Assist, watch the collision warning at about 70 s of the drive.
+3. With the board, choose AWR1843BOOST (USB) → Detect → Connect → Start. Each mode sends its
+   own configuration; switching modes reconfigures the radar.
+4. **Mounting:**
+   - Drive: behind the windscreen or on the bumper, looking forward.
+   - Park: on a bumper, looking outward.
+   - Cabin: at the mirror, looking into the cabin.
+5. **For experiments only.** Have a passenger operate the laptop, and never rely on the
+   warnings while driving.

@@ -5,12 +5,13 @@ mmWave radar over USB and getting its data out.
 
 **New here? Follow the step-by-step [RUN_GUIDE.md](RUN_GUIDE.md).**
 
-This folder contains two apps that share the same radar library and the same firmware:
+This folder contains three apps that share the same radar library and the same firmware:
 
 | App | Start it with | What it does |
 |---|---|---|
 | **Radar Studio** (this page) | `start_windows.bat` / `./start.sh` / `python -m awr1843` | general control, every data output, recording |
 | **Vital Signs Monitor** | `start_vitals_windows.bat` / `./start_vitals.sh` / `python -m awr1843_vitals` | contactless heart and breathing rate of a person in front of the radar. See [awr1843_vitals/README.md](awr1843_vitals/README.md). |
+| **Car Radar Suite** | `start_car_windows.bat` / `./start_car.sh` / `python -m awr1843_auto` | Drive Assist (radar speedometer, tracking, collision warning), Park Assist, Cabin Guard (child-left-behind alarm). See [awr1843_auto/README.md](awr1843_auto/README.md). |
 
 The app sends configurations to the radar, starts and stops it, and changes detection
 settings while it runs. It shows everything the firmware sends in real time and records it
@@ -191,7 +192,7 @@ lateral and **z** is height. A positive velocity means the target is moving away
 
 ```bash
 pip install -r requirements.txt pytest
-python -m pytest            # protocol, config maths, device control, recording, vital-sign accuracy
+python -m pytest            # protocol, config maths, device control, recording, vital signs, car scenarios
 ```
 
 | Module | Purpose |
@@ -204,3 +205,4 @@ python -m pytest            # protocol, config maths, device control, recording,
 | `awr1843/processing.py` | angle FFT and polar→cartesian heatmaps |
 | `awr1843/gui/app.py` | the Qt / pyqtgraph user interface |
 | `awr1843_vitals/` | the Vital Signs Monitor (processing, simulator, dashboard) |
+| `awr1843_auto/` | the Car Radar Suite (drive / park / cabin processing, simulator, HMI) |
