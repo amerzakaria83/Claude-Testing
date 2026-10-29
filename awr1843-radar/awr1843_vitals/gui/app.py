@@ -16,7 +16,8 @@ from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 
 from awr1843.config import RadarParams, parse_cfg, read_cfg_lines
 from awr1843.device import FrameSource, RadarDevice, list_ports
-from awr1843.gui.util import fit_to_screen
+from awr1843.gui.util import (fill_port_combo, fit_panel_width, fit_to_screen,
+                              setup_port_combo)
 from awr1843.recorder import Recorder, ReplaySource, new_recording_dir
 from awr1843.tlv import Frame
 
@@ -125,6 +126,8 @@ class VitalsWindow(QtWidgets.QMainWindow):
         form = QtWidgets.QFormLayout()
         self.cli_combo = QtWidgets.QComboBox(editable=True)
         self.data_combo = QtWidgets.QComboBox(editable=True)
+        for combo in (self.cli_combo, self.data_combo):
+            setup_port_combo(combo)
         form.addRow("CLI port", self.cli_combo)
         form.addRow("Data port", self.data_combo)
         lay.addLayout(form)
@@ -174,6 +177,8 @@ class VitalsWindow(QtWidgets.QMainWindow):
 
         box, lay = _group("Session")
         self.rec_dir = QtWidgets.QLineEdit(str(Path.cwd() / "recordings"))
+        self.rec_dir.setToolTip("Folder for recordings")
+        self.rec_dir.setMinimumWidth(60)
         lay.addWidget(self.rec_dir)
         self.rec_btn = QtWidgets.QPushButton("●  Record")
         self.rec_btn.setObjectName("danger")
@@ -203,9 +208,7 @@ class VitalsWindow(QtWidgets.QMainWindow):
         self.sidebar = QtWidgets.QScrollArea()
         self.sidebar.setWidget(side)
         self.sidebar.setWidgetResizable(True)
-        self.sidebar.setMinimumWidth(240)
-        self.sidebar.setMaximumWidth(340)
-        self.sidebar.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.sidebar.setMaximumWidth(420)
         self.sidebar.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
         self.splitter.addWidget(self.sidebar)
 
@@ -218,7 +221,8 @@ class VitalsWindow(QtWidgets.QMainWindow):
         self.splitter.setCollapsible(0, True)
         self.splitter.setCollapsible(1, False)
         self.splitter.setStretchFactor(1, 1)
-        self.splitter.setSizes([285, 1200])
+        self._side_width = fit_panel_width(self.sidebar, self.splitter)
+        self.splitter.setSizes([self._side_width, 1200])
 
         self.cards_grid = QtWidgets.QGridLayout()
         self.cards_grid.setSpacing(8)
@@ -275,7 +279,7 @@ class VitalsWindow(QtWidgets.QMainWindow):
             self._side_width = sizes[0]
             self.splitter.setSizes([0, sum(sizes)])
         else:
-            w = getattr(self, "_side_width", 285)
+            w = max(getattr(self, "_side_width", 0), fit_panel_width(self.sidebar, self.splitter))
             self.splitter.setSizes([w, max(1, sum(sizes) - w)])
 
     def resizeEvent(self, ev) -> None:  # noqa: N802 (Qt API)
@@ -461,9 +465,7 @@ class VitalsWindow(QtWidgets.QMainWindow):
     def _refresh_ports(self, cli: str | None = None, data: str | None = None) -> None:
         ports = list_ports()
         for combo, role, explicit in ((self.cli_combo, "cli", cli), (self.data_combo, "data", data)):
-            combo.clear()
-            for p in ports:
-                combo.addItem(str(p), p.device)
+            fill_port_combo(combo, ports)
             match = [i for i, p in enumerate(ports) if p.role == role]
             if explicit:
                 combo.setEditText(explicit)
@@ -475,7 +477,7 @@ class VitalsWindow(QtWidgets.QMainWindow):
         idx = combo.currentIndex()
         if idx >= 0 and combo.currentText() == combo.itemText(idx):
             return combo.itemData(idx)
-        return combo.currentText().split(" - ")[0].strip()
+        return combo.currentText().split(" - ")[0].split(" \u00b7 ")[0].strip()
 
     def _toggle_connect(self) -> None:
         if self.source is not None:

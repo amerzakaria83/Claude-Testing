@@ -18,7 +18,7 @@ from ..device import FrameSource, RadarDevice, list_ports
 from ..processing import CartesianMapper, angle_axis_deg, range_azimuth_map
 from ..recorder import Recorder, ReplaySource, export_raw, new_recording_dir
 from ..tlv import Frame, format_platform
-from .util import fit_to_screen
+from .util import fill_port_combo, fit_panel_width, fit_to_screen, setup_port_combo
 
 CONFIG_DIR = Path(__file__).resolve().parents[1] / "configs"
 DEFAULT_CFG_NAME = "awr1843_default.cfg"
@@ -106,6 +106,8 @@ class MainWindow(QtWidgets.QMainWindow):
         form = QtWidgets.QFormLayout()
         self.cli_combo = QtWidgets.QComboBox(editable=True)
         self.data_combo = QtWidgets.QComboBox(editable=True)
+        for combo in (self.cli_combo, self.data_combo):
+            setup_port_combo(combo)
         form.addRow("CLI port", self.cli_combo)
         form.addRow("Data port", self.data_combo)
         lay.addLayout(form)
@@ -171,6 +173,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         box, lay = _group("5. Record / replay")
         self.rec_dir = QtWidgets.QLineEdit(str(Path.cwd() / "recordings"))
+        self.rec_dir.setMinimumWidth(60)
         lay.addWidget(self.rec_dir)
         self.rec_btn = QtWidgets.QPushButton("● Record")
         self.rec_btn.setCheckable(True)
@@ -196,9 +199,8 @@ class MainWindow(QtWidgets.QMainWindow):
         scroll = QtWidgets.QScrollArea()
         scroll.setWidget(panel)
         scroll.setWidgetResizable(True)
-        scroll.setMinimumWidth(270)
-        scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         split.addWidget(scroll)
+        self.panel_scroll = scroll
         self.split = split
 
         # ---------------------------------------------------------- tabs
@@ -207,7 +209,8 @@ class MainWindow(QtWidgets.QMainWindow):
         split.setStretchFactor(1, 1)
         split.setCollapsible(0, True)
         split.setCollapsible(1, False)
-        split.setSizes([330, 1200])
+        self._panel_width = fit_panel_width(scroll, split)
+        split.setSizes([self._panel_width, 1200])
         self.tabs.addTab(self._build_points_tab(), "Point cloud")
         self.tabs.addTab(self._build_heatmap_tab(), "Heatmaps")
         self.tabs.addTab(self._build_telemetry_tab(), "Telemetry")
@@ -227,7 +230,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._panel_width = sizes[0]
             self.split.setSizes([0, sum(sizes)])
         else:
-            w = getattr(self, "_panel_width", 330)
+            w = max(getattr(self, "_panel_width", 0), fit_panel_width(self.panel_scroll, self.split))
             self.split.setSizes([w, max(1, sum(sizes) - w)])
 
     def _build_points_tab(self) -> QtWidgets.QWidget:
@@ -247,7 +250,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.persist_spin.setToolTip("Number of frames whose points stay on screen")
         v.addLayout(_row(QtWidgets.QLabel("Color"), self.color_by,
                          QtWidgets.QLabel(" Persist"), self.persist_spin,
-                         QtWidgets.QLabel(" Min SNR"), self.min_snr, self.hide_static))
+                         QtWidgets.QLabel(" Min SNR"), self.min_snr, self.hide_static, 1))
         v.addWidget(self.color_legend)
 
         glw = pg.GraphicsLayoutWidget()
@@ -492,9 +495,7 @@ class MainWindow(QtWidgets.QMainWindow):
         ports = list_ports()
         for combo, role, explicit in ((self.cli_combo, "cli", cli),
                                       (self.data_combo, "data", data)):
-            combo.clear()
-            for p in ports:
-                combo.addItem(str(p), p.device)
+            fill_port_combo(combo, ports)
             match = [i for i, p in enumerate(ports) if p.role == role]
             if explicit:
                 combo.setEditText(explicit)
@@ -511,7 +512,7 @@ class MainWindow(QtWidgets.QMainWindow):
         idx = combo.currentIndex()
         if idx >= 0 and combo.currentText() == combo.itemText(idx):
             return combo.itemData(idx)
-        return combo.currentText().split(" - ")[0].strip()
+        return combo.currentText().split(" - ")[0].split(" \u00b7 ")[0].strip()
 
     def _toggle_connect(self) -> None:
         if self.source is not None:
