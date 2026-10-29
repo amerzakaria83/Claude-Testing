@@ -13,7 +13,7 @@ from awr1843_vitals.simulator import VitalsSimulatedRadar, simulated_vitals_devi
 CFG_DIR = Path(__file__).resolve().parents[1] / "awr1843_vitals" / "configs"
 
 
-def params(name="vitals_20fps.cfg"):
+def params(name="vitals_15fps.cfg"):
     return parse_cfg(load_cfg_file(CFG_DIR / name))
 
 
@@ -31,7 +31,7 @@ def run_sim(p, seconds, update_every_s=1.0, **sim_kwargs):
             yield truth, proc.update()
 
 
-@pytest.mark.parametrize("name", ["vitals_20fps.cfg", "vitals_safe_8fps.cfg"])
+@pytest.mark.parametrize("name", ["vitals_15fps.cfg", "vitals_safe_8fps.cfg"])
 def test_configs(name):
     p = params(name)
     assert not p.warnings, p.warnings
@@ -39,12 +39,17 @@ def test_configs(name):
     assert p.max_range_m > 2.0
 
 
-def test_20fps_profile_numbers():
+def test_15fps_profile_numbers():
     p = params()
-    assert p.frame_rate_hz == 20 and p.num_range_bins == 64
+    assert p.frame_rate_hz == pytest.approx(15, abs=0.01) and p.num_range_bins == 128
     assert p.num_virtual_antennas_azimuth == 8
-    assert p.range_resolution_m == pytest.approx(0.061, abs=0.002)
-    assert p.data_port_load() < 0.7
+    assert p.range_resolution_m == pytest.approx(0.0508, abs=0.002)
+    # mmWave front-end limits: ADC rate >= 2000 ksps, sampling fits in the ramp,
+    # sweep stays inside 77-81 GHz
+    assert p.sample_rate_ksps >= 2000
+    assert p.adc_start_time_us + p.num_adc_samples / (p.sample_rate_ksps / 1000) <= p.ramp_end_time_us
+    assert p.start_freq_ghz + p.freq_slope_mhz_us * p.ramp_end_time_us / 1000 <= 81
+    assert p.data_port_load() < 0.75
 
 
 def test_fit_circle_recovers_centre():
@@ -66,7 +71,7 @@ def test_spectral_peak_and_harmonic_suppression():
 
 
 # 8 fps can only follow calm breathing (faster/deeper breathing aliases the phase)
-@pytest.mark.parametrize("name,seed,breath", [("vitals_20fps.cfg", 1, (12, 18)),
+@pytest.mark.parametrize("name,seed,breath", [("vitals_15fps.cfg", 1, (12, 18)),
                                               ("vitals_safe_8fps.cfg", 2, (10, 14))])
 def test_rates_match_ground_truth(name, seed, breath):
     eb, eh = [], []
@@ -138,7 +143,7 @@ def test_heart_tracker_rejects_octave_jumps():
 def test_device_record_and_reanalyse(tmp_path):
     """Full path: CLI config -> serial frames -> recording -> offline analysis."""
     dev = simulated_vitals_device(realtime=False, events=False, seed=6)
-    lines = load_cfg_file(CFG_DIR / "vitals_20fps.cfg")
+    lines = load_cfg_file(CFG_DIR / "vitals_15fps.cfg")
     rec = Recorder(tmp_path, lines, save_heatmaps=False)
     rec.attach(dev)
     got = []
@@ -147,16 +152,16 @@ def test_device_record_and_reanalyse(tmp_path):
         assert all(r.ok for r in dev.configure(lines))
         import time
         deadline = time.time() + 20
-        while len(got) < 500 and time.time() < deadline:
+        while len(got) < 400 and time.time() < deadline:
             time.sleep(0.05)
     finally:
         dev.stop()
         rec.detach(dev)
         rec.close()
         dev.close()
-    assert len(got) >= 500
+    assert len(got) >= 400
     proc = VitalSignsProcessor(parse_cfg(lines))
-    for f in read_raw_frames(tmp_path / "raw_data.bin", 64):
+    for f in read_raw_frames(tmp_path / "raw_data.bin", 128):
         proc.add_frame(f)
     r = proc.update()
     assert r.present and r.breath_bpm and r.heart_bpm

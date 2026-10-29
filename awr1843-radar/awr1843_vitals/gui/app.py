@@ -12,10 +12,11 @@ from pathlib import Path
 
 import numpy as np
 import pyqtgraph as pg
-from pyqtgraph.Qt import QtCore, QtWidgets
+from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 
 from awr1843.config import RadarParams, parse_cfg, read_cfg_lines
 from awr1843.device import FrameSource, RadarDevice, list_ports
+from awr1843.gui.util import fit_to_screen
 from awr1843.recorder import Recorder, ReplaySource, new_recording_dir
 from awr1843.tlv import Frame
 
@@ -26,7 +27,7 @@ from .widgets import (ALERT, BREATH, HEART, OK, STYLE, WARN, BreathIcon, HeartIc
                       MetricCard)
 
 CONFIG_DIR = Path(__file__).resolve().parents[1] / "configs"
-DEFAULT_CFG = "vitals_20fps.cfg"
+DEFAULT_CFG = "vitals_15fps.cfg"
 UPDATE_MS = 250
 
 pg.setConfigOptions(imageAxisOrder="row-major", antialias=True, background="#141a24",
@@ -69,7 +70,7 @@ class VitalsWindow(QtWidgets.QMainWindow):
                  cli_port: str | None = None, data_port: str | None = None):
         super().__init__()
         self.setWindowTitle("AWR1843 Vital Signs Monitor")
-        self.resize(1520, 940)
+        self._compact: bool | None = None
         self.source: FrameSource | None = None
         self.settings = VitalsSettings()
         self.params: RadarParams = parse_cfg(self._read_cfg(cfg or str(CONFIG_DIR / DEFAULT_CFG)))
@@ -103,8 +104,10 @@ class VitalsWindow(QtWidgets.QMainWindow):
         root = QtWidgets.QWidget()
         self.setCentralWidget(root)
         outer = QtWidgets.QHBoxLayout(root)
-        outer.setContentsMargins(10, 10, 10, 6)
-        outer.setSpacing(10)
+        outer.setContentsMargins(8, 8, 8, 4)
+        self.splitter = QtWidgets.QSplitter()
+        self.splitter.setHandleWidth(8)
+        outer.addWidget(self.splitter)
 
         # ------------------------------------------------- setup sidebar
         side = QtWidgets.QWidget()
@@ -197,20 +200,28 @@ class VitalsWindow(QtWidgets.QMainWindow):
         tips.setStyleSheet("color:#b8c4d2; padding:6px")
         sl.addWidget(tips)
         sl.addStretch(1)
-        scroll = QtWidgets.QScrollArea()
-        scroll.setWidget(side)
-        scroll.setWidgetResizable(True)
-        scroll.setFixedWidth(300)
-        scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
-        outer.addWidget(scroll)
+        self.sidebar = QtWidgets.QScrollArea()
+        self.sidebar.setWidget(side)
+        self.sidebar.setWidgetResizable(True)
+        self.sidebar.setMinimumWidth(240)
+        self.sidebar.setMaximumWidth(340)
+        self.sidebar.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.sidebar.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        self.splitter.addWidget(self.sidebar)
 
         # ---------------------------------------------------- main area
-        main = QtWidgets.QVBoxLayout()
-        main.setSpacing(10)
-        outer.addLayout(main, 1)
+        self.main_area = QtWidgets.QWidget()
+        main = QtWidgets.QVBoxLayout(self.main_area)
+        main.setContentsMargins(0, 0, 0, 0)
+        main.setSpacing(8)
+        self.splitter.addWidget(self.main_area)
+        self.splitter.setCollapsible(0, True)
+        self.splitter.setCollapsible(1, False)
+        self.splitter.setStretchFactor(1, 1)
+        self.splitter.setSizes([285, 1200])
 
-        cards = QtWidgets.QHBoxLayout()
-        cards.setSpacing(10)
+        self.cards_grid = QtWidgets.QGridLayout()
+        self.cards_grid.setSpacing(8)
         self.heart_icon = HeartIcon()
         self.heart_card = MetricCard("Heart rate", "bpm", HEART, self.heart_icon)
         self.breath_icon = BreathIcon()
@@ -226,7 +237,6 @@ class VitalsWindow(QtWidgets.QMainWindow):
         self.status_dot = QtWidgets.QLabel("●")
         self.status_text = QtWidgets.QLabel("Not connected")
         self.status_text.setWordWrap(True)
-        self.status_text.setStyleSheet("font-size:15pt; font-weight:600")
         stl.addLayout(_row(self.status_dot, self.status_text, 1))
         self.warmup = QtWidgets.QProgressBar()
         self.warmup.setTextVisible(False)
@@ -237,11 +247,8 @@ class VitalsWindow(QtWidgets.QMainWindow):
         self.status_sub.setWordWrap(True)
         stl.addWidget(self.status_sub)
         stl.addStretch(1)
-        for c, stretch in ((self.heart_card, 3), (self.breath_card, 3),
-                           (self.subject_card, 2), (self.status_card, 3)):
-            c.setMinimumHeight(170)
-            cards.addWidget(c, stretch)
-        main.addLayout(cards)
+        self.cards = [self.heart_card, self.breath_card, self.subject_card, self.status_card]
+        main.addLayout(self.cards_grid)
 
         self.tabs = QtWidgets.QTabWidget()
         main.addWidget(self.tabs, 1)
@@ -252,23 +259,80 @@ class VitalsWindow(QtWidgets.QMainWindow):
         self.console = QtWidgets.QPlainTextEdit(readOnly=True)
         self.console.setMaximumBlockCount(3000)
         self.tabs.addTab(self.console, "Radar log")
+        self.side_btn = QtWidgets.QPushButton("\u2630 Setup panel")
+        self.side_btn.setToolTip("Show / hide the setup panel (F2)")
+        self.side_btn.clicked.connect(self._toggle_sidebar)
+        self.statusBar().addPermanentWidget(self.side_btn)
+        sc = (getattr(QtGui, "QShortcut", None) or QtWidgets.QShortcut)(QtGui.QKeySequence("F2"), self)
+        sc.activated.connect(self._toggle_sidebar)
         self.statusBar().showMessage("Connect the radar or choose the simulator, then press Start.")
+        self._relayout()
+
+    # ------------------------------------------------------- responsiveness
+    def _toggle_sidebar(self) -> None:
+        sizes = self.splitter.sizes()
+        if sizes[0] > 0:
+            self._side_width = sizes[0]
+            self.splitter.setSizes([0, sum(sizes)])
+        else:
+            w = getattr(self, "_side_width", 285)
+            self.splitter.setSizes([w, max(1, sum(sizes) - w)])
+
+    def resizeEvent(self, ev) -> None:  # noqa: N802 (Qt API)
+        super().resizeEvent(ev)
+        self._relayout()
+
+    def _relayout(self) -> None:
+        """Adapt the dashboard to the window size: 4 cards in a row on wide
+        windows, a 2 x 2 grid on narrow ones, and fonts that scale."""
+        if not hasattr(self, "cards"):
+            return
+        avail_w = self.main_area.width() if self.main_area.width() > 100 else self.width() - 300
+        compact = avail_w < 860
+        if compact != self._compact:
+            self._compact = compact
+            for c in self.cards:
+                self.cards_grid.removeWidget(c)
+            for i, c in enumerate(self.cards):
+                r, col = divmod(i, 2) if compact else (0, i)
+                self.cards_grid.addWidget(c, r, col)
+            for col in range(4):
+                self.cards_grid.setColumnStretch(col, 0)
+            stretches = (1, 1) if compact else (3, 3, 2, 3)
+            for col, st in enumerate(stretches):
+                self.cards_grid.setColumnStretch(col, st)
+        h = self.height()
+        big = int(max(22, min(52, h / 26 if compact else min(h / 19, avail_w / 22))))
+        for card in (self.heart_card, self.breath_card, self.subject_card):
+            card.set_font_px(big)
+        icon = int(max(40, min(80, big * 1.5)))
+        self.heart_icon.set_size(icon)
+        self.breath_icon.set_size(icon)
+        self.status_text.setStyleSheet(f"font-size:{max(15, int(big * 0.45))}px; font-weight:600")
+        short = self.tabs.height() < 420
+        for plot, long_label, short_label in getattr(self, "_axis_labels", []):
+            plot.setLabel("left", short_label if short else long_label)
 
     def _build_wave_tab(self):
         glw = pg.GraphicsLayoutWidget()
-        p = _plot(glw, 0, 0, "Chest displacement", "mm")
+        # no titles and a single shared time axis: keeps the plots usable on small screens
+        p = _plot(glw, 0, 0, None, "chest (mm)")
+        p.hideAxis("bottom")
         self.disp_curve = p.plot(pen=pg.mkPen("#c4b5fd", width=1.6))
         self.motion_curve = p.plot(pen=pg.mkPen(WARN, width=6), connect="finite")
         self.disp_plot = p
-        p2 = _plot(glw, 1, 0, "Breathing", "mm")
+        p2 = _plot(glw, 1, 0, None, "breathing (mm)")
+        p2.hideAxis("bottom")
         self.breath_curve = p2.plot(pen=pg.mkPen(BREATH, width=2))
         self.breath_peaks = pg.ScatterPlotItem(size=9, brush=pg.mkBrush("#ffffff"), pen=None,
                                                symbol="t1")
         p2.addItem(self.breath_peaks)
-        p3 = _plot(glw, 2, 0, "Heartbeat", "mm")
+        p3 = _plot(glw, 2, 0, None, "heartbeat (mm)")
         self.heart_curve = p3.plot(pen=pg.mkPen(HEART, width=1.6))
         for q in (p2, p3):
             q.setXLink(p)
+        self._axis_labels = [(p, "chest (mm)", "chest"), (p2, "breathing (mm)", "breath"),
+                             (p3, "heartbeat (mm)", "heart")]
         p.setXRange(-self.settings.history_s, 0, padding=0)
         return glw
 
@@ -322,9 +386,10 @@ class VitalsWindow(QtWidgets.QMainWindow):
 
     def _build_trend_tab(self):
         glw = pg.GraphicsLayoutWidget()
-        p = _plot(glw, 0, 0, "Breathing rate", "breaths/min", "session time (min)")
+        p = _plot(glw, 0, 0, None, "breathing (/min)", "session time (min)")
+        p.hideAxis("bottom")
         self.br_trend = p.plot(pen=pg.mkPen(BREATH, width=2), connect="finite")
-        p2 = _plot(glw, 1, 0, "Heart rate", "bpm", "session time (min)")
+        p2 = _plot(glw, 1, 0, None, "heart rate (bpm)", "session time (min)")
         self.hr_trend = p2.plot(pen=pg.mkPen(HEART, width=2), connect="finite")
         p2.setXLink(p)
         self.sim_truth_br = p.plot(pen=pg.mkPen("#ffffff", width=1, style=QtCore.Qt.PenStyle.DotLine))
@@ -359,6 +424,9 @@ class VitalsWindow(QtWidgets.QMainWindow):
 
     def _on_task_done(self, name: str, ok: bool, msg: str) -> None:
         self.busy = False
+        if ok and name == "Start" and self.width() < 1150 and self.splitter.sizes()[0] > 0:
+            self._toggle_sidebar()   # small screen: give the dashboard the room
+            msg += " - setup panel hidden, press F2 or \u2630 to show it"
         if ok:
             self.statusBar().showMessage(f"{name}: {msg or 'done'}", 8000)
         else:
@@ -788,7 +856,10 @@ def run_gui(sim: bool = False, cfg: str | None = None, cli_port: str | None = No
     app.setStyle("Fusion")
     app.setStyleSheet(STYLE)
     win = VitalsWindow(sim=sim, cfg=cfg, cli_port=cli_port, data_port=data_port)
-    win.show()
+    if fit_to_screen(win, 1520, 940):
+        win.showMaximized()
+    else:
+        win.show()
     if replay:
         win.start_replay(replay)
     return app.exec()

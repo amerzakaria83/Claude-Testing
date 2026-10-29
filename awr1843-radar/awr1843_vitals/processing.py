@@ -338,7 +338,7 @@ class VitalSignsProcessor:
         # ---------------------------------------------- motion
         # (a) slow large movements show up as big displacement changes;
         # (b) fast movements alias the phase (> lambda/4 per frame), which shows
-        #     up as frequent near-pi phase steps; breathing at 20 fps stays well
+        #     up as frequent near-pi phase steps; breathing at 15-20 fps stays well
         #     below that (<= ~1.3 rad per frame).
         lag = max(1, int(round(0.5 * fs)))
         jump = np.zeros(n)

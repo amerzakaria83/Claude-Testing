@@ -3,6 +3,8 @@
 A desktop app, a command-line tool and a Python library for controlling a **TI AWR1843BOOST**
 mmWave radar over USB and getting its data out.
 
+**New here? Follow the step-by-step [RUN_GUIDE.md](RUN_GUIDE.md).**
+
 This folder contains two apps that share the same radar library and the same firmware:
 
 | App | Start it with | What it does |

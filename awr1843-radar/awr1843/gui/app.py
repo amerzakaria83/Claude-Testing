@@ -18,6 +18,7 @@ from ..device import FrameSource, RadarDevice, list_ports
 from ..processing import CartesianMapper, angle_axis_deg, range_azimuth_map
 from ..recorder import Recorder, ReplaySource, export_raw, new_recording_dir
 from ..tlv import Frame, format_platform
+from .util import fit_to_screen
 
 CONFIG_DIR = Path(__file__).resolve().parents[1] / "configs"
 DEFAULT_CFG_NAME = "awr1843_default.cfg"
@@ -58,7 +59,6 @@ class MainWindow(QtWidgets.QMainWindow):
                  cli_port: str | None = None, data_port: str | None = None):
         super().__init__()
         self.setWindowTitle("AWR1843 Radar Studio")
-        self.resize(1500, 920)
 
         self.source: FrameSource | None = None
         self.recorder: Recorder | None = None
@@ -196,20 +196,39 @@ class MainWindow(QtWidgets.QMainWindow):
         scroll = QtWidgets.QScrollArea()
         scroll.setWidget(panel)
         scroll.setWidgetResizable(True)
-        scroll.setMinimumWidth(330)
+        scroll.setMinimumWidth(270)
+        scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         split.addWidget(scroll)
+        self.split = split
 
         # ---------------------------------------------------------- tabs
         self.tabs = QtWidgets.QTabWidget()
         split.addWidget(self.tabs)
         split.setStretchFactor(1, 1)
+        split.setCollapsible(0, True)
+        split.setCollapsible(1, False)
+        split.setSizes([330, 1200])
         self.tabs.addTab(self._build_points_tab(), "Point cloud")
         self.tabs.addTab(self._build_heatmap_tab(), "Heatmaps")
         self.tabs.addTab(self._build_telemetry_tab(), "Telemetry")
         self.tabs.addTab(self._build_table_tab(), "Points table")
         self.tabs.addTab(self._build_console_tab(), "CLI console")
         self.tabs.addTab(self._build_cfg_tab(), "Config editor")
+        side_btn = QtWidgets.QPushButton("\u2630 Control panel")
+        side_btn.setToolTip("Show / hide the control panel (F2)")
+        side_btn.clicked.connect(self._toggle_panel)
+        self.statusBar().addPermanentWidget(side_btn)
+        (getattr(QtGui, "QShortcut", None) or QtWidgets.QShortcut)(QtGui.QKeySequence("F2"), self).activated.connect(self._toggle_panel)
         self.statusBar().showMessage("Connect the radar (or pick the simulator) to begin.")
+
+    def _toggle_panel(self) -> None:
+        sizes = self.split.sizes()
+        if sizes[0] > 0:
+            self._panel_width = sizes[0]
+            self.split.setSizes([0, sum(sizes)])
+        else:
+            w = getattr(self, "_panel_width", 330)
+            self.split.setSizes([w, max(1, sum(sizes) - w)])
 
     def _build_points_tab(self) -> QtWidgets.QWidget:
         w = QtWidgets.QWidget()
@@ -222,10 +241,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.min_snr = QtWidgets.QDoubleSpinBox(minimum=0, maximum=60, value=0, suffix=" dB")
         self.hide_static = QtWidgets.QCheckBox("Hide static points")
         self.color_legend = QtWidgets.QLabel()
-        v.addLayout(_row(QtWidgets.QLabel("Color by"), self.color_by,
-                         QtWidgets.QLabel("  Persistence (frames)"), self.persist_spin,
-                         QtWidgets.QLabel("  Min SNR"), self.min_snr, self.hide_static,
-                         self.color_legend, 1))
+        # the legend may be cut on narrow windows instead of forcing a wide window
+        self.color_legend.setSizePolicy(QtWidgets.QSizePolicy.Policy.Ignored,
+                                        QtWidgets.QSizePolicy.Policy.Preferred)
+        self.persist_spin.setToolTip("Number of frames whose points stay on screen")
+        v.addLayout(_row(QtWidgets.QLabel("Color"), self.color_by,
+                         QtWidgets.QLabel(" Persist"), self.persist_spin,
+                         QtWidgets.QLabel(" Min SNR"), self.min_snr, self.hide_static))
+        v.addWidget(self.color_legend)
 
         glw = pg.GraphicsLayoutWidget()
         v.addWidget(glw, 1)
@@ -377,9 +400,11 @@ class MainWindow(QtWidgets.QMainWindow):
     def _build_cfg_tab(self) -> QtWidgets.QWidget:
         w = QtWidgets.QWidget()
         v = QtWidgets.QVBoxLayout(w)
-        v.addWidget(QtWidgets.QLabel(
+        hint = QtWidgets.QLabel(
             "This text is exactly what <b>Send config &amp; Start</b> sends to the radar. "
-            "Edit freely; derived parameters update on the left."))
+            "Edit freely; derived parameters update on the left.")
+        hint.setWordWrap(True)
+        v.addWidget(hint)
         self.cfg_edit = QtWidgets.QPlainTextEdit()
         self.cfg_edit.setFont(QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.SystemFont.FixedFont))
         self.cfg_edit.textChanged.connect(lambda: self._cfg_debounce.start(300))
@@ -829,7 +854,7 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             vals, cmap, lo, hi = pts["z"], "plasma", -1.5, 1.5
             label = "z -1.5 → 1.5 m"
-        self.color_legend.setText(f"  {label}")
+        self.color_legend.setText(label)
         norm = np.clip((np.asarray(vals, float) - lo) / (hi - lo), 0, 1)
         colors = pg.colormap.get(cmap).map(norm, mode="byte")
         return [pg.mkBrush(*c) for c in colors]
@@ -983,7 +1008,10 @@ def run_gui(sim: bool = False, cfg: str | None = None, cli_port: str | None = No
     app.setApplicationName("AWR1843 Radar Studio")
     app.setStyle("Fusion")
     win = MainWindow(sim=sim, cfg=cfg, cli_port=cli_port, data_port=data_port)
-    win.show()
+    if fit_to_screen(win, 1500, 920):
+        win.showMaximized()
+    else:
+        win.show()
     if replay:
         win.start_replay(replay)
     return app.exec()

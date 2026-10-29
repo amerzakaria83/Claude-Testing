@@ -9,7 +9,7 @@ from pathlib import Path
 
 from awr1843.config import load_cfg_file, parse_cfg
 
-DEFAULT_CFG = Path(__file__).resolve().parent / "configs" / "vitals_20fps.cfg"
+DEFAULT_CFG = Path(__file__).resolve().parent / "configs" / "vitals_15fps.cfg"
 
 
 def _fmt(v, nd=0):

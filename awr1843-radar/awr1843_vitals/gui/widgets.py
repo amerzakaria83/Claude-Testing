@@ -19,7 +19,7 @@ QMainWindow, QScrollArea, QScrollArea > QWidget > QWidget { background: #0f141c;
 QFrame#card { background: #171e2a; border: 1px solid #263042; border-radius: 14px; }
 QLabel#cardTitle { color: #9aa7b6; font-size: 9pt; font-weight: 600;
                    letter-spacing: 1px; }
-QLabel#bigValue { font-size: 44pt; font-weight: 700; }
+QLabel#bigValue { font-weight: 700; }
 QLabel#unit { color: #9aa7b6; font-size: 11pt; }
 QLabel#sub { color: #b8c4d2; font-size: 10pt; }
 QGroupBox { border: 1px solid #263042; border-radius: 10px; margin-top: 14px;
@@ -69,6 +69,10 @@ class HeartIcon(QtWidgets.QWidget):
         super().__init__()
         self.setFixedSize(size, size)
         self.bpm: float | None = None
+
+    def set_size(self, size: int) -> None:
+        if size != self.width():
+            self.setFixedSize(size, size)
         self._phase = 0.0
 
     def advance(self, dt: float) -> None:
@@ -104,6 +108,10 @@ class BreathIcon(QtWidgets.QWidget):
         super().__init__()
         self.setFixedSize(size, size)
         self.level: float | None = None   # 0 (exhaled) .. 1 (inhaled)
+
+    def set_size(self, size: int) -> None:
+        if size != self.width():
+            self.setFixedSize(size, size)
 
     def set_level(self, level: float | None) -> None:
         self.level = level
@@ -159,11 +167,24 @@ class MetricCard(QtWidgets.QFrame):
         self.sub = QtWidgets.QLabel("")
         self.sub.setObjectName("sub")
         lay.addWidget(self.sub, 2, 0, 1, 2)
+        self.sub.setWordWrap(True)
         self.conf = ConfidenceBar(color)
         lay.addWidget(self.conf, 3, 0, 1, 2)
+        self.font_px = 44
+        self._col = MUTED
         self.set_value(None)
+
+    def _restyle(self) -> None:
+        self.value.setStyleSheet(f"color: {self._col}; font-size: {self.font_px}px;")
+
+    def set_font_px(self, px: int) -> None:
+        if px != self.font_px:
+            self.font_px = px
+            self._restyle()
 
     def set_value(self, text: str | None, dim: bool = False) -> None:
         self.value.setText(text if text is not None else "--")
         col = MUTED if (text is None or dim) else self.color
-        self.value.setStyleSheet(f"color: {col};")
+        if col != self._col:
+            self._col = col
+            self._restyle()

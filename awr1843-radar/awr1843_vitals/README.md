@@ -13,12 +13,14 @@ reflash the board.
 
 ## Quick start
 
+A detailed walkthrough with troubleshooting is in [../RUN_GUIDE.md](../RUN_GUIDE.md).
+
 1. Board setup is the same as for Radar Studio: 5 V supply, out-of-box demo flashed, and
    functional mode (**SOP2 on, SOP0 off**).
 2. **Windows:** double-click `start_vitals_windows.bat`. **Linux / macOS:** run
    `./start_vitals.sh`. Or run `python -m awr1843_vitals` after
    `pip install -r requirements.txt`.
-3. Click *Connect*, keep **`vitals_20fps.cfg`** selected, and click **Start measuring**.
+3. Click *Connect*, keep **`vitals_15fps.cfg`** selected, and click **Start measuring**.
 4. Sit **0.4–1.2 m** in front of the board with your chest facing it. Stay still and breathe
    normally. The first readings appear after about **10 s** of stillness.
 
@@ -72,13 +74,13 @@ from awr1843 import RadarDevice
 from awr1843.config import load_cfg_file, parse_cfg
 from awr1843_vitals import VitalSignsProcessor
 
-cfg = load_cfg_file("awr1843_vitals/configs/vitals_20fps.cfg")
+cfg = load_cfg_file("awr1843_vitals/configs/vitals_15fps.cfg")
 with RadarDevice.connect() as radar:
     radar.configure(cfg)
     proc = VitalSignsProcessor(parse_cfg(cfg))
     for i, frame in enumerate(radar.frames(timeout=3)):
         proc.add_frame(frame)
-        if i % 20 == 0:                      # once per second at 20 fps
+        if i % 15 == 0:                      # once per second at 15 fps
             r = proc.update()
             print(r.status, r.breath_bpm, r.heart_bpm, r.distance_m)
 ```
@@ -120,8 +122,8 @@ measure. Each update (4 per second) runs these steps:
 
 | File | Frames/s | Range bins | Notes |
 |---|---|---|---|
-| `vitals_20fps.cfg` (**recommended**) | 20 | 64 × 6.1 cm, up to 3.5 m | 2 TX × 4 RX. Uses about 60 % of the UART. Handles chest speeds up to about 15 mm/s, which covers deep breathing. |
-| `vitals_safe_8fps.cfg` | 8 | 256 × 4.4 cm | TI's unchanged SDK chirp. Use it if your firmware rejects the 20 fps profile. Fast or deep breathing aliases at 8 fps and is reported as motion. |
+| `vitals_15fps.cfg` (**recommended**) | 15 | 128 × 5.1 cm, up to 5.8 m | 2 TX × 4 RX. Same 49 µs ADC sampling window as TI's SDK profiles. Sends only the heatmap and stats, which uses about 70 % of the UART. Handles chest speeds up to about 11 mm/s, which covers deep breathing. |
+| `vitals_safe_8fps.cfg` | 8 | 256 × 4.4 cm | TI's unchanged SDK chirp. Use it if your firmware rejects the 15 fps profile. Fast or deep breathing aliases at 8 fps and is reported as motion. |
 
 Both configs keep **`clutterRemoval` off**, because static clutter removal would delete the
 zero-Doppler signal that the measurement relies on. If you write your own config, it also
@@ -129,7 +131,7 @@ needs `guiMonitor` with rangeAzimuthHeatMap = 1.
 
 ## Accuracy and limitations
 
-On the simulator, over 300 s with motion and breath-hold events, the 20 fps profile gave a
+On the simulator, over 300 s with motion and breath-hold events, the 15 fps profile gave a
 breathing rate within **1.0 /min** (mean absolute error) and a heart rate within
 **2.2 bpm**, with 97 % of heart readings within ±5 bpm. The 8 fps profile with calm breathing
 gave 1.0 /min and 2.6 bpm. The simulator is idealised. On a real person, expect:
@@ -144,8 +146,8 @@ gave 1.0 /min and 2.6 bpm. The simulator is idealised. On a real person, expect:
 - Rates are averages over a 12–25 s window, so sudden changes appear with a delay of a few
   seconds.
 - One person at a time.
-- **HRV and blood pressure are not available.** The 20 Hz frame rate and the phase noise are
+- **HRV and blood pressure are not available.** The 15 Hz frame rate and the phase noise are
   too coarse for beat-to-beat timing.
-- **The 20 fps profile hasn't been tried on a real board yet.** It's built from standard
+- **The 15 fps profile hasn't been tried on a real board yet.** It's built from standard
   commands of the SDK 3.x demo. If a command fails, the *Radar log* tab shows which one. Use
   `vitals_safe_8fps.cfg` meanwhile and report the error.
