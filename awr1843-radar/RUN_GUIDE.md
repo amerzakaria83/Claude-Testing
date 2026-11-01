@@ -106,6 +106,8 @@ Any error is printed in that window. Copy it and send it to me.
 |---|---|
 | Double-clicking the `.bat` flashes a window and closes it | Run it from a Command Prompt (see above) to read the message. Usually Python isn't installed or isn't on PATH. |
 | `No module named ...` | Delete the `.venv` folder and double-click the `.bat` again to reinstall. |
+| `did not find executable at '...python.exe'` | The `.venv` folder was made with a Python you have since removed or upgraded. The current launchers rebuild it automatically. With an older copy, delete the `.venv` folder and run the `.bat` again. |
+| Package installation fails on a very new Python (3.14 / 3.15) | Not every package has ready-made builds for brand-new Python versions yet. Install **Python 3.12** as well (it can sit next to 3.15) and run the `.bat` again. It switches to 3.12 automatically. |
 | *Connection failed* / *Access denied* | Another program has the port open. Close it, unplug and replug USB, then try again. |
 | *Connect failed: no response* | No 5 V supply, the wrong SOP switches, or the CLI and data ports are swapped. Press NRST and try again. |
 | *Start failed: Command failed: ...* | The firmware rejected a configuration line. The **Radar log** tab shows which one. Select **`vitals_safe_8fps.cfg`**, click Start again, and send me the log. |
