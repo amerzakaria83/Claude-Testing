@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "awr1843-radar"
+version = "1.0.0"
+description = "Control, data extraction, vital-sign and automotive apps for the TI AWR1843BOOST mmWave radar"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = ["numpy>=1.22", "pyserial>=3.5", "pyqtgraph>=0.13.3", "PySide6>=6.5",
+                "scipy>=1.9"]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[project.scripts]
+awr1843 = "awr1843.cli:main"
+awr1843-vitals = "awr1843_vitals.cli:main"
+awr1843-car = "awr1843_auto.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["awr1843*"]  # awr1843, awr1843_vitals, awr1843_auto
+
+[tool.setuptools.package-data]
+awr1843 = ["configs/*.cfg"]
+awr1843_vitals = ["configs/*.cfg"]
+awr1843_auto = ["configs/*.cfg"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
